@@ -240,76 +240,6 @@ def smoothness_updated_tensor(volume, total_tp, ages, roi_val, epsilon: float = 
     else:
         return torch.stack(loss_list).mean() + epsilon
 
-    
-def smoothness_updated(get_volume, total_tp, ages, roi_val):
-
-    #print(get_volume)
-    #print(total_tp)
-    #print(ages)
-
-    ages = torch.tensor(ages, dtype=torch.float32, device='cuda')
-    
-    loss = []
-    batch_temp = []
-    for b in range(0, total_tp.shape[0], 1):
-        
-        cur_total_tp = total_tp[b] 
-        #print("current total_tp", cur_total_tp)
-        #print(get_volume[b])
-        #print(ages[b])
-        #print("i , j , k")
-
-        whole_loss = []
-        temp = []
-        #print("Loop runs till 0 to ", cur_total_tp-2, "for time point of", total_tp[b] )
-        for i in range(0, cur_total_tp-2, 1):
-            #print(i)
-            j = i+1
-            k = i+2
-            #print(i, j, k)
-            if math.isnan(ages[b][i]):
-                ages[b][i] = (ages[b][i-1] + ages[b][i+1])/2
-                print("ages in i is nan", ages[b][i])
-            if math.isnan(ages[b][j]):
-                ages[b][j] = (ages[b][j-1] + ages[b][j+1])/2
-                print("ages in j is nan", ages[b][j])
-            if math.isnan(ages[b][k]):
-                ages[b][k] = (ages[b][k-1] + ages[b][k+1])/2
-                print("ages in k is nan", ages[b][k])
-            #print("time point", i, "val", get_volume[b][i][roi_val], "age", ages[b][i])
-            #print("time point", j, "val", get_volume[b][j][roi_val], "age", ages[b][j])
-            #print("time point", k, "val", get_volume[b][k][roi_val], "age", ages[b][k])
-            w_ij = torch.abs(ages[b][j] - ages[b][i])
-            w_jk = torch.abs(ages[b][k] - ages[b][j])
-            #print("w_ij", w_ij, "--- w_jk", w_jk)
-            V_mean = ((w_ij * get_volume[b][i][roi_val]) + (w_jk * get_volume[b][k][roi_val])) / (w_ij + w_jk)
-            #print(V_mean)
-            #calc = nn.MSELoss(reduction='mean')
-            #cur_loss = calc(get_volume[b][j] - V_mean)
-            ### The expression torch.norm(a, p=2) ** 2 computes the squared Euclidean norm (or squared L2 norm) of the tensor a
-            cur_loss = torch.norm(get_volume[b][j][roi_val] - V_mean, p=2) ** 2
-            temp.append(cur_loss)
-            whole_loss = torch.stack(temp)
-            #print("######## whole losses", whole_loss)
-            del V_mean
-            #clear_gpu_memory()
-
-        
-        if (cur_total_tp>2):
-            #print("mean of whole loss : ", torch.mean(whole_loss))
-            batch_temp.append(torch.mean(whole_loss))
-            loss = torch.stack(batch_temp)
-        #print("for batch", b, "loss is:", loss)
-
-    del whole_loss, temp, batch_temp
-    clear_gpu_memory()
-
-    if len(loss) == 0:
-        loss = torch.tensor(0.0, requires_grad=True) + epsilon
-    else:    
-        loss = torch.mean(loss) + epsilon
-        loss = loss + torch.tensor(0.0, requires_grad=True)
-    return loss
 
 
 def quadratic_model(x, a, b, c):
@@ -372,76 +302,6 @@ def age_constraint_tensor(volume, total_tp, ages):
     total_loss = torch.stack(loss_list).mean() / 1000.0 + epsilon
     return total_loss + torch.tensor(0.0, requires_grad=True, device=volume.device)
 
-def age_constraint(get_volume, total_tp, ages):
-
-    # Move get_volume, total_tp, ages to GPU
-    #get_volume = torch.tensor(get_volume, dtype=torch.float32, device='cuda')
-    #total_tp = torch.tensor(total_tp, dtype=torch.int64, device='cuda')
-    #ages = torch.tensor(ages, dtype=torch.float32, device='cuda')
-
-    #print("NON TENSOR FUNCTION")
-    #print("get_volume type:", type(get_volume))
-    #print("total_tp type:", type(total_tp))
-    #print("ages type:", type(ages))
-
-    #ages = torch.tensor(ages, dtype=torch.float32, device='cuda')
-    
-    loss = []
-    batch_vol_total_np = []
-    batch_vol_total = []
-    #print("############ in age constraint ############")
-    #print("Volumes", get_volume)
-    #print("time point", total_tp)
-    #print("ages", ages)
-    
-    for b in range(0, total_tp.shape[0], 1):
-
-        #print("batch :", b)
-        cur_total_tp = total_tp[b] 
-        one_vol_total = []
-        temp_full_error = []
-        for ll in range(0, cur_total_tp, 1):
-            cur_age = ages[b, ll]
-            if (not math.isnan(cur_age)):
-                my_vol_LH = get_volume[b, ll, 1]
-                my_vol_RH = get_volume[b, ll, 2]
-                #print("Age", cur_age.item(), "Volume LH", my_vol_LH.item(), "Volume RH", my_vol_RH.item())
-                #actual_vol_LH = quadratic_model(x=cur_age, a=-0.18408087740848428, b=12.972866265659233, c=2737.2051019277146)
-                #actual_vol_RH = quadratic_model(x=cur_age, a=-0.4374767107074925, b=49.34600659317594, c=1546.8515880180278)
-                actual_vol_LH = torch.tensor(quadratic_model(x=cur_age, a=-0.18408087740848428, b=12.972866265659233, c=2737.2051019277146), dtype=torch.float32)
-                actual_vol_RH = torch.tensor(quadratic_model(x=cur_age, a=-0.4374767107074925, b=49.34600659317594, c=1546.8515880180278), dtype=torch.float32)
-                #print("Age", cur_age.item(), "actual LH", actual_vol_LH.item(), "actual RH", actual_vol_RH.item())
-                error_LH = torch.abs(actual_vol_LH - my_vol_LH)
-                error_RH = torch.abs(actual_vol_RH - my_vol_RH)
-                #error_LH = np.abs(actual_vol_LH - my_vol_LH)
-                #error_RH = np.abs(actual_vol_RH - my_vol_RH)
-                full_error = error_LH + error_RH 
-                temp_full_error.append(full_error)
-                one_vol_total = torch.stack(temp_full_error)
-            else:
-                print("---------------------- nan found !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
-        del temp_full_error, full_error
-            
-        #print("before mean", one_vol_total)
-        one_vol_total = torch.mean(one_vol_total)
-        #print("after mean", one_vol_total)
-
-        batch_vol_total_np.append(one_vol_total)
-        batch_vol_total = torch.stack(batch_vol_total_np)
-        #print("batch :", b, "total loss", batch_vol_total)
-
-    #print("loss 3 batches", batch_vol_total)
-    del one_vol_total, batch_vol_total_np
-    clear_gpu_memory()
-    
-    loss = torch.mean(batch_vol_total)
-    #print("loss3 val -", loss)
-    loss = loss/1000
-    loss = loss + epsilon
-    loss = loss + torch.tensor(0.0, requires_grad=True)
-    
-    return loss 
 
 
 def dice_score_variable_TP(preds, targets, time_lens, epsilon=1e-6):
@@ -869,14 +729,6 @@ class get_loss(nn.Module):
             print("In loss2 condition - SC")
             ages, _, _ = get_other_demographics(all_IDs)
             del _
-            #print(get_volume)
-            #get_volume = (get_volume/2097152)
-            #get_volume = torch.tensor(get_volume, dtype=torch.float32).cuda()
-            #loss_2 = smoothness(get_volume, total_tp)
-            
-            #loss_2_1 = smoothness_updated(get_volume, total_tp.numpy(), ages, 1)
-            #loss_2_2 = smoothness_updated(get_volume, total_tp.numpy(), ages, 2)
-            #final_loss = (loss_2_1 + loss_2_2) / 2
             
             loss_2_1_tensor = smoothness_updated_tensor(get_volume, total_tp.numpy(), ages, 1)
             loss_2_2_tensor = smoothness_updated_tensor(get_volume, total_tp.numpy(), ages, 2)
@@ -894,7 +746,6 @@ class get_loss(nn.Module):
             ages, _, _ = get_other_demographics(all_IDs)
             del _
             
-            #loss_3 = age_constraint(get_volume, total_tp.numpy(), ages)
             loss_3 = age_constraint_tensor(get_volume, total_tp.numpy(), ages)
             
             #print("loss 3 ---", loss_3)
@@ -913,9 +764,8 @@ class get_loss(nn.Module):
             ages, ICVs, diagnosis = get_other_demographics(all_IDs)
             diagnosis = np.array(diagnosis, dtype=np.int64)
             #print("DIAGNOSIS", diagnosis)
-            #loss_4 = vol_loss_calculate_old(get_volume, total_tp.numpy(), ages, ICVs, diagnosis, cur_fold)
             loss_4 = vol_loss_calculate_old_tensor(get_volume, total_tp.numpy(), ages, ICVs, diagnosis, cur_fold)
-            #loss_4 = torch.tensor(0.0, requires_grad=True)
+
             dice1 = dice2 = torch.tensor(0.0)
             final_loss = loss_4
             #print("loss 4 ---", final_loss)

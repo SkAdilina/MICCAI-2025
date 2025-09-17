@@ -203,12 +203,6 @@ class mydata_nnunet(Dataset):
 
         # String to append in front of each item
         image_path = pickle_root + 'npy_all_normalized-96-96-96-Step1-GT-FT-crop-reg-nnunet-style/'
-        #'npy_all_normalized-96-96-96-Step1-GT-crop-reg-nnunet-style/'
-        #'npy_all_normalized-96-96-96-Step1-GT-crop-ONLY-nnunet-style/'
-        #'npy_all_normalized-96-96-96-Step1-GT-crop-reg/'
-        #'npy_all_normalized-96-96-96-Step1-GT/'
-        #'npy_all_normalized/'
-        #image_path = pickle_root + 'npy_all-partial/'
         
         for l in lines:
             #print(l)
